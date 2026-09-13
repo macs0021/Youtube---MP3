@@ -37,20 +37,21 @@ const YouTubeVideoDownloader = () => {
     }
   };
 
-  const waitForFile = async (url, maxRetries = 10, delay = 1000) => {
+  const waitForConversion = async (id, toastId, maxRetries = 15, delay = 2000) => {
     for (let i = 0; i < maxRetries; i++) {
-      try {
-        const response = await fetch(url, { method: 'HEAD' });
-        if (response.ok) {
-          return true;
-        }
-      } catch (error) {
-        console.error('Error checking file availability:', error);
+      const data = await VideoToMP3.downloadVideo(id);
+
+      if (data.status === 'ok' && data.link) {
+        return data;
       }
-      toast.info(`Waiting for the file to be ready... (${i + 1}/${maxRetries})`);
+      if (data.status === 'fail') {
+        throw new Error(data.msg || 'Conversion failed');
+      }
+
+      toast.update(toastId, { render: `Converting your video... (${i + 1}/${maxRetries})` });
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
-    return false;
+    return null;
   };
 
   const handleDownload = async () => {
@@ -58,21 +59,20 @@ const YouTubeVideoDownloader = () => {
       return;
     }
 
-    try {
-      const data = await VideoToMP3.downloadVideo(videoId);
-      console.log(data.title);
+    const toastId = toast.loading("Preparing your download. Please wait...");
 
-      toast.info("Preparing your download. Please wait...");
-      const isFileReady = await waitForFile(data.link);
-      if (isFileReady) {
-        downloadFile(data.link, data.title);
-        toast.success("Download started successfully!");
+    try {
+      const data = await waitForConversion(videoId, toastId);
+      if (data) {
+        const fileName = data.title?.toLowerCase().endsWith('.mp3') ? data.title : `${data.title}.mp3`;
+        downloadFile(data.link, fileName);
+        toast.update(toastId, { render: "Download started successfully!", type: "success", isLoading: false, autoClose: 3000 });
       } else {
-        toast.error("The file is not ready for download. Please try again later.");
+        toast.update(toastId, { render: "The file is not ready for download. Please try again later.", type: "error", isLoading: false, autoClose: 4000 });
       }
     } catch (error) {
       console.error("Download error:", error);
-      toast.error("There was a problem downloading the video, try again later.");
+      toast.update(toastId, { render: "There was a problem downloading the video, try again later.", type: "error", isLoading: false, autoClose: 4000 });
     }
   };
 
